@@ -20,6 +20,8 @@ description of program
 // To ensure that we do not use portsf to close a file that was never opened.
 #define INVALID_PORTSF_FID -1
 
+enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE };  
+
 int isWav(char s[]){
 	if (strstr(s, ".wav") != NULL){
 		return 1;
@@ -35,44 +37,23 @@ int main( int argc, char *argv[] ){
 		1. The name of the input file (including the .wav suffix),
 		2. The name of the output file (including the .wav suffix), and 
 		3. The cut-off frequency of the filter (in Hz). */
-	// int in_fID = INVALID_PORTSF_FID;
-	// char input_filename[100];
+	int in_fID = INVALID_PORTSF_FID;
+	PSF_PROPS audio_properties;
+	int return_value = EXIT_SUCCESS;
 
-	// // Initialise portsf library
- //    if(psf_init()) {
- //        printf("Unable to start portsf library.\n");
- //        return EXIT_FAILURE;
- //    }
+	// Initialise portsf library
+    if(psf_init()) {
+        printf("Unable to start portsf library.\n");
+        return EXIT_FAILURE;
+    }
 
-    // parse user input
+    // Open the input file
+    if ((in_fID = psf_sndOpen(argv[1], &audio_properties,
+        DO_NOT_AUTO_RESCALE))<0) {
 
-	if(argv[1] != NULL){
-
-		/* this error checking will actually be done in the file-opening process a la http://www.cprogramming.com/tutorial/c/lesson14.html */
-		if (isWav(argv[1]) == 1){
-			printf( "Input file: %s\n", argv[1] );
-		} else {
-			printf("Please check name of input file - usage: %s\n", USAGE);
-		}
-		if (isWav(argv[2]) == 1){
-			printf( "Output file: %s\n", argv[2] );
-		} else {
-			printf("Please check name of output file - usage: %s\n", USAGE);
-		}
-
-		printf( "Cut-off frequency: %s\n", argv[3] );
-	} else {
-		printf("Instructions for use: use the number ");		
-	}
-
-    // // Open the input file
-    // if ((in_fID = psf_sndOpen(INPUT_FILENAME, &audio_properties,
-    //     DO_NOT_AUTO_RESCALE))<0) {
-
-    //     printf("Unable to open file %s\n",INPUT_FILENAME);
-    //     return_value = EXIT_FAILURE;
-    //     goto CLEAN_UP;
-    // }
+        printf("Unable to open file %s\n",argv[1]);
+        return_value = EXIT_FAILURE;
+    }
 
 
 
