@@ -15,7 +15,7 @@ description of program
 #include "portsf.h"
 #include "CW2_Biquads.h"
 
-#define NUM_SAMPLES_IN_BLOCK 1024
+#define N_FRAMES_IN_BUFFER 1024
 #define USAGE "cw2_MartinRowe <input wav> <output wav> <cutoff frequency in Hz>"
 
 // To ensure that portsf does not close a file that was never opened.
@@ -27,18 +27,11 @@ description of program
 // To make calls to portsf more readable
 enum float_clipping { DO_NOT_CLIP_FLOATS, CLIP_FLOATS };
 enum minheader { DO_NOT_MINIMISE_HDR, MINIMISE_HDR };
-enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE };  
-
+enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE }; 
 
 //declare functions
-void biquad(
-    float *buffer,
-    float *circBuffer,
-    int *circBufferIndex,
-    long num_frames
-);
+void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans);
 void zero_io_buffer(float *buffer);
-
 
 //---------------------------------------------------------------------
 int main( int argc, char *argv[] ){
@@ -49,7 +42,6 @@ int main( int argc, char *argv[] ){
 
 
 	PSF_PROPS audio_properties; //PSF_props is a type defined in portsf
-    float buffer[NUM_SAMPLES_IN_BLOCK];
     float circBuffer[CIRCULAR_BUFFER_LENGTH] = {0.0}; //init circular Buffer and set all to zero values
     int circBufferIndex;
 
@@ -63,48 +55,49 @@ int main( int argc, char *argv[] ){
     }
 
     // Open the input file
-    if ((in_fID = psf_sndOpen(argv[1], &audio_properties,
-        DO_NOT_AUTO_RESCALE))<0) {
+    if ((in_fID = psf_sndOpen(argv[1], &audio_properties,DO_NOT_AUTO_RESCALE))<0) {
 
         printf("Unable to open file %s\n",argv[1]);
         return_value = EXIT_FAILURE;
     }
 
+    // Open the output file
+    if ((out_fID = psf_sndCreate(argv[2], &audio_properties, CLIP_FLOATS, DO_NOT_MINIMISE_HDR, PSF_CREATE_RDWR))<0) 
+    {   
+        printf("Unable to create file %s\n",argv[2]);
+        return_value = EXIT_FAILURE;
+    }
+
     //frame counters 
     printf("Number of channels in input file: %i\n",audio_properties.chans);
-    DWORD nFrames = NUM_SAMPLES_IN_BLOCK / audio_properties.chans; 
-    float *block = NULL;
-
+    DWORD nFrames = N_FRAMES_IN_BUFFER / audio_properties.chans; 
+    float *buffer = NULL;
     long num_frames_written;
     long num_frames_read;
     long num_frames_to_write;
 
+    //allocate memory for buffer
+   if ((buffer = malloc(nFrames * audio_properties.chans * sizeof(float)))==NULL) {
 
-
- 	// Create the output file
-    if ((out_fID = psf_sndCreate(argv[2], &audio_properties,
-        CLIP_FLOATS, DO_NOT_MINIMISE_HDR, PSF_CREATE_RDWR))<0) {
-        
-        printf("Unable to create file %s\n",argv[2]);
+        printf("Unable to allocate memory for buffer.\n");
         return_value = EXIT_FAILURE;
     }
-    //allocate memory for block
-   if ((block = (float*) malloc(nFrames * audio_properties.chans * sizeof(float)))==NULL) {
 
-        printf("Unable to allocate memory for block.\n");
-        return_value = EXIT_FAILURE;
-    }
+
+
+
 
     // Read frames from input file
-    while ((num_frames_read=psf_sndReadFloatFrames(in_fID, block, nFrames)) > 0) { 
-        
-        //filter signal
-        biquad(buffer,circBuffer,&circBufferIndex,num_frames_read);
+    while ((num_frames_read=psf_sndReadFloatFrames(in_fID, buffer, nFrames)) > 0) { 
 
-        // Write the frame to the output file
+        //filter signal
+        biquad(buffer,circBuffer,&circBufferIndex,num_frames_read,audio_properties.chans);
+
+        // Write the buffer to the output file
         num_frames_written = psf_sndWriteFloatFrames(out_fID,buffer,num_frames_read);
 
-        if (num_frames_written!=num_frames_read) {
+        if (num_frames_written!=num_frames_read) 
+        {
             printf("Unable to write to %s\n",argv[2]);
             return_value = EXIT_FAILURE;
         }
@@ -122,7 +115,7 @@ int main( int argc, char *argv[] ){
         }
 
         zero_io_buffer(buffer);
-        biquad(buffer,circBuffer,&circBufferIndex,num_frames_to_write);
+        biquad(buffer,circBuffer,&circBufferIndex,num_frames_to_write,audio_properties.chans);
 
         // Write the buffer to the output file
         num_frames_written = psf_sndWriteFloatFrames(out_fID,buffer,num_frames_to_write);
@@ -136,8 +129,8 @@ int main( int argc, char *argv[] ){
     //cleanup
     
 	   // Free the memory for the frame
-    if (block)
-        free(block);
+    if (buffer)
+        free(buffer);
 
     // Close the output file
     if (out_fID>=0)
@@ -153,25 +146,27 @@ int main( int argc, char *argv[] ){
 	return 0;
 }
 
-void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_frames ) {
+void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans ) {
     int next_circBufferIndex;
     float current_sample;
     float delayed_sample;
-
-
-    for (int frame_idx=0; frame_idx<num_frames; frame_idx++) {
-        next_circBufferIndex = (*circBufferIndex+1)%CIRCULAR_BUFFER_LENGTH;
-        buffer[frame_idx] = 0.0;
-        // current_sample = buffer[frame_idx];
-        // circBuffer[*circBufferIndex] = current_sample;
-        // delayed_sample = circBuffer[next_circBufferIndex];
-        // // We are using the same buffer for input and output
-        // buffer[frame_idx] = current_sample + (0.5*delayed_sample);
-        *circBufferIndex = next_circBufferIndex;
+    for (int i = 0; i < num_frames*num_chans; i++){
+    buffer[i] = 0.0;
     }
+
+    // for (int frame_idx=0; frame_idx<num_frames; frame_idx++) {
+    //     next_circBufferIndex = (*circBufferIndex+1)%CIRCULAR_BUFFER_LENGTH;
+    //     //buffer[frame_idx] = 0.0;
+    //     // current_sample = buffer[frame_idx];
+    //     // circBuffer[*circBufferIndex] = current_sample;
+    //     // delayed_sample = circBuffer[next_circBufferIndex];
+    //     // // We are using the same buffer for input and output
+    //     // buffer[frame_idx] = current_sample + (0.5*delayed_sample);
+    //     *circBufferIndex = next_circBufferIndex;
+    // }
 
 }
 
 void zero_io_buffer(float *buffer) {
-    memset(buffer,0,NUM_SAMPLES_IN_BLOCK*sizeof(float));
+    memset(buffer,0,N_FRAMES_IN_BUFFER*sizeof(float));
 }
