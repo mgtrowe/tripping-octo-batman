@@ -12,6 +12,7 @@ description of program
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "portsf.h"
 #include "CW2_Biquads.h"
 
@@ -21,8 +22,8 @@ description of program
 // To ensure that portsf does not close a file that was never opened.
 #define INVALID_PORTSF_FID -1
 
-//circulr buffer
-#define CIRCULAR_BUFFER_LENGTH 1024
+//filter order
+#define FIR_FILTER_ORDER 126
 
 // To make calls to portsf more readable
 enum float_clipping { DO_NOT_CLIP_FLOATS, CLIP_FLOATS };
@@ -32,7 +33,8 @@ enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE };
 //declare functions
 void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans);
 void zero_io_buffer(float *buffer);
-
+void calculateLowpassCoefficients(double *coefficients, long fs, int N, float f);
+double sinc(double x);
 //---------------------------------------------------------------------
 int main( int argc, char *argv[] ){
 
@@ -42,11 +44,21 @@ int main( int argc, char *argv[] ){
 
 
 	PSF_PROPS audio_properties; //PSF_props is a type defined in portsf
-    float circBuffer[CIRCULAR_BUFFER_LENGTH] = {0.0}; //init circular Buffer and set all to zero values
+    float circBuffer[FIR_FILTER_ORDER] = {0.0}; //init circular Buffer and set all to zero values to relax the filter
+    int circBufferLength = FIR_FILTER_ORDER;
     int circBufferIndex;
 
 	int return_value = EXIT_SUCCESS; //from stdlib
- 	
+
+    double coefficients[FIR_FILTER_ORDER+1];
+
+    float *buffer = NULL; //buffer
+    long num_frames_written;
+    long num_frames_read;
+    long num_frames_to_write;
+
+
+
 
 	// Initialise portsf library
     if(psf_init()) {
@@ -71,10 +83,6 @@ int main( int argc, char *argv[] ){
     //frame counters 
     printf("Number of channels in input file: %i\n",audio_properties.chans);
     DWORD nFrames = N_FRAMES_IN_BUFFER / audio_properties.chans; 
-    float *buffer = NULL;
-    long num_frames_written;
-    long num_frames_read;
-    long num_frames_to_write;
 
     //allocate memory for buffer
    if ((buffer = malloc(nFrames * audio_properties.chans * sizeof(float)))==NULL) {
@@ -84,7 +92,7 @@ int main( int argc, char *argv[] ){
     }
 
 
-
+    calculateLowpassCoefficients(&*coefficients, audio_properties.srate, FIR_FILTER_ORDER, 3000.0);
 
 
     // Read frames from input file
@@ -105,11 +113,11 @@ int main( int argc, char *argv[] ){
 
 
     // Deal with leftover frames
-    for (int buffer_num=0; buffer_num<(CIRCULAR_BUFFER_LENGTH-1); buffer_num += nFrames) 
+    for (int buffer_num=0; buffer_num<(circBufferLength-1); buffer_num += nFrames) 
     {    
         // Determine how many frames to write from the buffer
-        if ((buffer_num+nFrames)>(CIRCULAR_BUFFER_LENGTH-1)) {
-            num_frames_to_write = (CIRCULAR_BUFFER_LENGTH-1)-buffer_num;
+        if ((buffer_num+nFrames)>(circBufferLength-1)) {
+            num_frames_to_write = (circBufferLength-1)-buffer_num;
         } else {
             num_frames_to_write = nFrames;
         }
@@ -147,15 +155,21 @@ int main( int argc, char *argv[] ){
 }
 
 void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans ) {
-    int next_circBufferIndex;
-    float current_sample;
-    float delayed_sample;
+    // int next_circBufferIndex;
+    // float current_sample;
+    // float delayed_sample;
+
+    //for each channel
+    //sampleAddress(sample, channel)
+    //something like this check martins slides
+
+
     for (int i = 0; i < num_frames*num_chans; i++){
-    buffer[i] = 0.0;
+    buffer[i] = 0;
     }
 
     // for (int frame_idx=0; frame_idx<num_frames; frame_idx++) {
-    //     next_circBufferIndex = (*circBufferIndex+1)%CIRCULAR_BUFFER_LENGTH;
+    //     next_circBufferIndex = (*circBufferIndex+1)%circBufferLength;
     //     //buffer[frame_idx] = 0.0;
     //     // current_sample = buffer[frame_idx];
     //     // circBuffer[*circBufferIndex] = current_sample;
@@ -169,4 +183,26 @@ void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_fr
 
 void zero_io_buffer(float *buffer) {
     memset(buffer,0,N_FRAMES_IN_BUFFER*sizeof(float));
+}
+
+void calculateLowpassCoefficients(double *coefficients, long fs, int N, float fc){
+
+for (int n = 0; n < N+1; n++){
+    coefficients[n] = (0.54 - (0.46 * cos((2.0 * M_PI * n) / N))) * (((2.0 * fc) / fs) * sinc(((2.0 * n - N) * fc) / fs));
+    //coefficients[n] = 0.46 * cos(2 * M_PI * n)
+    printf("%i: %lf\n", n+1, coefficients[n]);
+    }
+
+printf("success, we found your %i coefficients for\n"
+        "cutoff:%f\n"
+        "sampling frequency:%lu\n"
+    , N+1,fc,fs);
+
+}
+
+double sinc(double x){
+    if (x != 0)
+    return (sin(M_PI * x)) / (M_PI * x);
+    else
+    return 1;
 }
