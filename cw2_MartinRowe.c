@@ -22,7 +22,7 @@ description of program
 // To ensure that portsf does not close a file that was never opened.
 #define INVALID_PORTSF_FID -1
 
-//filter order
+//filter order (must be int and even)
 #define FIR_FILTER_ORDER 126
 
 // To make calls to portsf more readable
@@ -31,13 +31,26 @@ enum minheader { DO_NOT_MINIMISE_HDR, MINIMISE_HDR };
 enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE }; 
 
 //declare functions
-void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans, double *coefficients);
+void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc);
+void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, double *coefficients);
 void zero_io_buffer(float *buffer);
 void calculateLowpassCoefficients(double *coefficients, long fs, int N, float f);
 double sinc(double x);
 double firFilter(float *circbuffer, int order, int circBufferIndex, double *coefficients);
 //---------------------------------------------------------------------
 int main( int argc, char *argv[] ){
+    //init variables for user input storage
+    long fc;
+    char inputFilename[64];
+    char outputFilename[64];
+
+    //function to recieve and error-check user input
+    parseUserInput(argc, argv, inputFilename, outputFilename, &fc); 
+
+printf("input is: %s\n",inputFilename);
+printf("output is: %s\n",outputFilename);
+printf("cutoff frequency is: %lu \n",fc);
+
 
     //fIDs are initialised to help with clean up code (if implimented)
 	int in_fID = INVALID_PORTSF_FID;
@@ -93,14 +106,14 @@ int main( int argc, char *argv[] ){
     }
 
 
-    calculateLowpassCoefficients(&*coefficients, audio_properties.srate, FIR_FILTER_ORDER, 220.0);
+    calculateLowpassCoefficients(&*coefficients, audio_properties.srate, FIR_FILTER_ORDER, fc);
 
 
     // Read frames from input file
     while ((num_frames_read=psf_sndReadFloatFrames(in_fID, buffer, nFrames)) > 0) { 
 
         //filter signal
-        biquad(buffer,circBuffer,&circBufferIndex,num_frames_read,audio_properties.chans,coefficients);
+        biquad(buffer,circBuffer,&circBufferIndex,num_frames_read,coefficients);
 
         // Write the buffer to the output file
         num_frames_written = psf_sndWriteFloatFrames(out_fID,buffer,num_frames_read);
@@ -124,7 +137,7 @@ int main( int argc, char *argv[] ){
         }
 
         zero_io_buffer(buffer);
-        biquad(buffer,circBuffer,&circBufferIndex,num_frames_to_write,audio_properties.chans,coefficients);
+        biquad(buffer,circBuffer,&circBufferIndex,num_frames_to_write,coefficients);
 
         // Write the buffer to the output file
         num_frames_written = psf_sndWriteFloatFrames(out_fID,buffer,num_frames_to_write);
@@ -155,31 +168,22 @@ int main( int argc, char *argv[] ){
 	return 0;
 }
 
-void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans, double *coefficients) {
-    // int next_circBufferIndex;
-    // float current_sample;
-    // float delayed_sample;
+void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc){
+    strcpy(inputFilename, argv[1]);
+    strcpy(outputFilename, argv[2]);
+    *fc = atol(argv[3]);
+}
 
-    for (int c = 0; c < num_chans; c++)
-        for (int s = 0; s < num_frames/num_chans; s += num_chans){
+void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_frames,double *coefficients) {
+
+   
+        for (int s = 0; s < num_frames; s ++){
             circBuffer[*circBufferIndex] = buffer[s];
             buffer[s] = firFilter(circBuffer, FIR_FILTER_ORDER, *circBufferIndex, &*coefficients);
             *circBufferIndex = (*circBufferIndex + 1) % FIR_FILTER_ORDER;
             
         }
 
-    // for (int frame_idx=0; frame_idx<num_frames*num_chans; frame_idx++) {
-
-        // next_circBufferIndex = (*circBufferIndex+1)%FIR_FILTER_ORDER;
-        
-        // current_sample = buffer[frame_idx];
-
-        // circBuffer[*circBufferIndex] = current_sample;
-        // delayed_sample = circBuffer[next_circBufferIndex];
-        // // We are using the same buffer for input and output
-        // buffer[frame_idx] = current_sample + (0.5*delayed_sample);
-        // *circBufferIndex = next_circBufferIndex;
-    // }
 
 }
 
@@ -191,14 +195,8 @@ void calculateLowpassCoefficients(double *coefficients, long fs, int N, float fc
 
 for (int n = 0; n < N+1; n++){
     coefficients[n] = (0.54 - (0.46 * cos((2.0 * M_PI * n) / N))) * (((2.0 * fc) / fs) * sinc(((2.0 * n - N) * fc) / fs));
-    //coefficients[n] = 0.46 * cos(2 * M_PI * n)
-    printf("%i: %lf\n", n+1, coefficients[n]);
     }
 
-printf("success, we found your %i coefficients for\n"
-        "cutoff:%f\n"
-        "sampling frequency:%lu\n"
-    , N+1,fc,fs);
 
 }
 
