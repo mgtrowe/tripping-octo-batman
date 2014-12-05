@@ -31,10 +31,11 @@ enum minheader { DO_NOT_MINIMISE_HDR, MINIMISE_HDR };
 enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE }; 
 
 //declare functions
-void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans);
+void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans, double *coefficients);
 void zero_io_buffer(float *buffer);
 void calculateLowpassCoefficients(double *coefficients, long fs, int N, float f);
 double sinc(double x);
+double firFilter(float *circbuffer, int order, int circBufferIndex, double *coefficients);
 //---------------------------------------------------------------------
 int main( int argc, char *argv[] ){
 
@@ -46,7 +47,7 @@ int main( int argc, char *argv[] ){
 	PSF_PROPS audio_properties; //PSF_props is a type defined in portsf
     float circBuffer[FIR_FILTER_ORDER] = {0.0}; //init circular Buffer and set all to zero values to relax the filter
     int circBufferLength = FIR_FILTER_ORDER;
-    int circBufferIndex;
+    int circBufferIndex = 0;
 
 	int return_value = EXIT_SUCCESS; //from stdlib
 
@@ -92,14 +93,14 @@ int main( int argc, char *argv[] ){
     }
 
 
-    calculateLowpassCoefficients(&*coefficients, audio_properties.srate, FIR_FILTER_ORDER, 3000.0);
+    calculateLowpassCoefficients(&*coefficients, audio_properties.srate, FIR_FILTER_ORDER, 220.0);
 
 
     // Read frames from input file
     while ((num_frames_read=psf_sndReadFloatFrames(in_fID, buffer, nFrames)) > 0) { 
 
         //filter signal
-        biquad(buffer,circBuffer,&circBufferIndex,num_frames_read,audio_properties.chans);
+        biquad(buffer,circBuffer,&circBufferIndex,num_frames_read,audio_properties.chans,coefficients);
 
         // Write the buffer to the output file
         num_frames_written = psf_sndWriteFloatFrames(out_fID,buffer,num_frames_read);
@@ -123,7 +124,7 @@ int main( int argc, char *argv[] ){
         }
 
         zero_io_buffer(buffer);
-        biquad(buffer,circBuffer,&circBufferIndex,num_frames_to_write,audio_properties.chans);
+        biquad(buffer,circBuffer,&circBufferIndex,num_frames_to_write,audio_properties.chans,coefficients);
 
         // Write the buffer to the output file
         num_frames_written = psf_sndWriteFloatFrames(out_fID,buffer,num_frames_to_write);
@@ -154,29 +155,30 @@ int main( int argc, char *argv[] ){
 	return 0;
 }
 
-void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans ) {
+void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int num_chans, double *coefficients) {
     // int next_circBufferIndex;
     // float current_sample;
     // float delayed_sample;
 
-    //for each channel
-    //sampleAddress(sample, channel)
-    //something like this check martins slides
+    for (int c = 0; c < num_chans; c++)
+        for (int s = 0; s < num_frames/num_chans; s += num_chans){
+            circBuffer[*circBufferIndex] = buffer[s];
+            buffer[s] = firFilter(circBuffer, FIR_FILTER_ORDER, *circBufferIndex, &*coefficients);
+            *circBufferIndex = (*circBufferIndex + 1) % FIR_FILTER_ORDER;
+            
+        }
 
+    // for (int frame_idx=0; frame_idx<num_frames*num_chans; frame_idx++) {
 
-    for (int i = 0; i < num_frames*num_chans; i++){
-    buffer[i] = 0;
-    }
+        // next_circBufferIndex = (*circBufferIndex+1)%FIR_FILTER_ORDER;
+        
+        // current_sample = buffer[frame_idx];
 
-    // for (int frame_idx=0; frame_idx<num_frames; frame_idx++) {
-    //     next_circBufferIndex = (*circBufferIndex+1)%circBufferLength;
-    //     //buffer[frame_idx] = 0.0;
-    //     // current_sample = buffer[frame_idx];
-    //     // circBuffer[*circBufferIndex] = current_sample;
-    //     // delayed_sample = circBuffer[next_circBufferIndex];
-    //     // // We are using the same buffer for input and output
-    //     // buffer[frame_idx] = current_sample + (0.5*delayed_sample);
-    //     *circBufferIndex = next_circBufferIndex;
+        // circBuffer[*circBufferIndex] = current_sample;
+        // delayed_sample = circBuffer[next_circBufferIndex];
+        // // We are using the same buffer for input and output
+        // buffer[frame_idx] = current_sample + (0.5*delayed_sample);
+        // *circBufferIndex = next_circBufferIndex;
     // }
 
 }
@@ -205,4 +207,13 @@ double sinc(double x){
     return (sin(M_PI * x)) / (M_PI * x);
     else
     return 1;
+}
+double firFilter(float *circbuffer, int order, int circBufferIndex, double *coefficients){
+    int n; //counter for orders of delay
+    double sample = 0;
+    for (int z = 0; z <= order; z++){
+        n = (z+circBufferIndex)%order; //line up 0th value in circular buffer
+        sample += circbuffer[n] * coefficients[z];
+    }
+    return sample;
 }
