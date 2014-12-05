@@ -32,11 +32,7 @@ enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE };
 
 //declare functions
 void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc);
-void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, double *coefficients);
-void zero_io_buffer(float *buffer);
-void calculateLowpassCoefficients(double *coefficients, long fs, int N, float f);
-double sinc(double x);
-double firFilter(float *circbuffer, int order, int circBufferIndex, double *coefficients);
+
 //---------------------------------------------------------------------
 int main( int argc, char *argv[] ){
     //init variables for user input storage
@@ -46,11 +42,6 @@ int main( int argc, char *argv[] ){
 
     //function to recieve and error-check user input
     parseUserInput(argc, argv, inputFilename, outputFilename, &fc); 
-
-printf("input is: %s\n",inputFilename);
-printf("output is: %s\n",outputFilename);
-printf("cutoff frequency is: %lu \n",fc);
-
 
     //fIDs are initialised to help with clean up code (if implimented)
 	int in_fID = INVALID_PORTSF_FID;
@@ -70,9 +61,6 @@ printf("cutoff frequency is: %lu \n",fc);
     long num_frames_written;
     long num_frames_read;
     long num_frames_to_write;
-
-
-
 
 	// Initialise portsf library
     if(psf_init()) {
@@ -174,44 +162,3 @@ void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFil
     *fc = atol(argv[3]);
 }
 
-void biquad( float *buffer, float *circBuffer, int *circBufferIndex, long num_frames,double *coefficients) {
-
-   
-        for (int s = 0; s < num_frames; s ++){
-            circBuffer[*circBufferIndex] = buffer[s];
-            buffer[s] = firFilter(circBuffer, FIR_FILTER_ORDER, *circBufferIndex, &*coefficients);
-            *circBufferIndex = (*circBufferIndex + 1) % FIR_FILTER_ORDER;
-            
-        }
-
-
-}
-
-void zero_io_buffer(float *buffer) {
-    memset(buffer,0,N_FRAMES_IN_BUFFER*sizeof(float));
-}
-
-void calculateLowpassCoefficients(double *coefficients, long fs, int N, float fc){
-
-for (int n = 0; n < N+1; n++){
-    coefficients[n] = (0.54 - (0.46 * cos((2.0 * M_PI * n) / N))) * (((2.0 * fc) / fs) * sinc(((2.0 * n - N) * fc) / fs));
-    }
-
-
-}
-
-double sinc(double x){
-    if (x != 0)
-    return (sin(M_PI * x)) / (M_PI * x);
-    else
-    return 1;
-}
-double firFilter(float *circbuffer, int order, int circBufferIndex, double *coefficients){
-    int n; //counter for orders of delay
-    double sample = 0;
-    for (int z = 0; z <= order; z++){
-        n = (z+circBufferIndex)%order; //line up 0th value in circular buffer
-        sample += circbuffer[n] * coefficients[z];
-    }
-    return sample;
-}

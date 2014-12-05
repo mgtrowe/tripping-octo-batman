@@ -14,7 +14,7 @@ LIBS = \
     -lportsf
 
 all:
-	gcc -o $(TARGET) -Wall $(INCFOLDERS) $(LIBFOLDERS) $(LIBS) $(FRAMEWORKS) $(SOURCES)
+	gcc -o  $(TARGET) -Wall $(INCFOLDERS) $(LIBFOLDERS) $(LIBS) $(FRAMEWORKS) $(SOURCES)
 
 clean:
 	rm $(TARGET)
