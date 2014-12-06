@@ -18,7 +18,7 @@ algorithm and executing the algorithm on a
 #include "portsf.h"
 #include "CW2_Biquads.h"
 
-#define N_SAMPLES_IN_BUFFER 1024
+#define N_FRAMES_IN_BUFFER 1024
 #define USAGE "cw2_MartinRowe <input wav> <output wav> <cutoff frequency in Hz>"
 
 // To ensure that portsf does not close a file that was never opened.
@@ -53,14 +53,13 @@ int main( int argc, char *argv[] ){
 
     // A circular buffer will be used in the FIR filter implimentation
     int circBufferLength = FIR_FILTER_ORDER; // smallest possible circular buffer size is determined by FIR filter order
-    float **circBuffer = NULL; // Init circular Buffer size will be determined by number of chans
-    int *circBufferIndex = NULL;
+    float circBuffer[FIR_FILTER_ORDER] = {0.0}; // Init circular Buffer and set all to zero values to relax the filter
+    int circBufferIndex = 0;
 
     float *buffer = NULL; // Buffer for Portsf - size will be allocated when input file length is known
-    float **deinterlacedBuffer = NULL; // Array for storing deinterleaved samples while processing
-    int bufferLength;
     long num_frames_written;
     long num_frames_read;
+    long num_frames_to_write;
 
     int return_value = EXIT_SUCCESS; //from stdlib
 
@@ -96,56 +95,20 @@ int main( int argc, char *argv[] ){
     }
 
     // Check input file channel count
-    if (audio_properties.chans > 2){
+    if (audio_properties.chans > 1){
         printf("Number of channels in input file (%s) exceeds 1. Please select a mono input file.\n",inputFilename);
         return_value = EXIT_FAILURE;
         goto CLEANUP;
     }
     // Init frame counter (for multichannel if implimented)
-    DWORD nFrames = N_SAMPLES_IN_BUFFER / audio_properties.chans; 
-    bufferLength = N_SAMPLES_IN_BUFFER;
+    DWORD nFrames = N_FRAMES_IN_BUFFER / audio_properties.chans; 
 
     // Allocate memory for buffer
-    if ((buffer = malloc(bufferLength))==NULL) {
+   if ((buffer = malloc(nFrames * audio_properties.chans * sizeof(float)))==NULL) {
         printf("Unable to allocate memory for buffer.\n");
         return_value = EXIT_FAILURE;
         goto CLEANUP;
     }
-
-    // Allocate memory for deinterlacedBuffer audio buffer
-   if ((deinterlacedBuffer = malloc(audio_properties.chans))==NULL) {
-        printf("Unable to allocate memory for deinterlacedBuffer channels.\n");
-        return_value = EXIT_FAILURE;
-        goto CLEANUP;
-    }
-   for (int i = 0; i < audio_properties.chans; i++){
-       if ((deinterlacedBuffer[i] = malloc(nFrames * sizeof(float)))==NULL) {
-            printf("Unable to allocate memory for deinterlacedBuffer buffer channel %i samples.\n",i);
-            return_value = EXIT_FAILURE;
-            goto CLEANUP;
-        }
-    }
-
-    //allocate memory for circular buffer per channel
-   if ((circBuffer = malloc(audio_properties.chans))==NULL) {
-        printf("Unable to allocate memory for circularBuffer channels.\n");
-        return_value = EXIT_FAILURE;
-        goto CLEANUP;
-    }
-    for (int i = 0; i < audio_properties.chans; i++){
-        if ((circBuffer[i] = malloc(circBufferLength * sizeof(float)))==NULL) {
-            printf("Unable to allocate memory for circularBuffer channel %i samples.\n",i);
-            return_value = EXIT_FAILURE;
-            goto CLEANUP;
-        }
-    }
-
-    if ((circBufferIndex = malloc(audio_properties.chans * sizeof(int)))==NULL) {
-        printf("Unable to allocate memory for circular buffer index.\n");
-        return_value = EXIT_FAILURE;
-        goto CLEANUP;
-    }
-
     //---------------------------------------------------------------------
     // COEFFICIENT CALCULATION AND AUDIO PROCESSING
 
@@ -154,23 +117,42 @@ int main( int argc, char *argv[] ){
 
     // Read frames from input file into buffer
     while ((num_frames_read=psf_sndReadFloatFrames(in_fID, buffer, nFrames)) > 0) { 
-
-        // Deinterlace buffer
-        deinterlace(buffer, deinterlacedBuffer, num_frames_read, audio_properties.chans);
-
-        // Cycle through each channel for processing
-        for (int chan = 0; chan < audio_properties.chans; chan++){
-            // Filter signal for each deinterlaced channel
-         //   biquad(deinterlacedBuffer[chan],circBuffer[chan],&circBufferIndex[chan],num_frames_read,FIR_FILTER_ORDER,coefficients);
-        }
-        // Interlace samples buffer
-        interlace(deinterlacedBuffer, buffer, num_frames_read, audio_properties.chans);
+        
+        // Filter signal
+        biquad(buffer,circBuffer,&circBufferIndex,num_frames_read,FIR_FILTER_ORDER,coefficients);
 
         // Write the buffer to the output file
         num_frames_written = psf_sndWriteFloatFrames(out_fID,buffer,num_frames_read);
 
         if (num_frames_written!=num_frames_read) 
         {
+            printf("Unable to write to %s\n",outputFilename);
+            return_value = EXIT_FAILURE;
+            goto CLEANUP;
+        }
+    }
+
+
+    // Deal with remainder frames
+    for (int buffer_num=0; buffer_num<(circBufferLength-1); buffer_num += nFrames) 
+    {    
+        // Determine how many frames to write from the buffer
+        if ((buffer_num+nFrames)>(circBufferLength-1)) {
+            num_frames_to_write = (circBufferLength-1)-buffer_num;
+        } else {
+            num_frames_to_write = nFrames;
+        }
+
+        // Function to relax buffer
+        zero_io_buffer(buffer);
+
+        // Filter signal
+        biquad(buffer,circBuffer,&circBufferIndex,num_frames_to_write,FIR_FILTER_ORDER,coefficients);
+
+        // Write the buffer to the output file
+        num_frames_written = psf_sndWriteFloatFrames(out_fID,buffer,num_frames_to_write);
+
+        if (num_frames_written!=num_frames_to_write) {
             printf("Unable to write to %s\n",outputFilename);
             return_value = EXIT_FAILURE;
             goto CLEANUP;
@@ -184,11 +166,6 @@ int main( int argc, char *argv[] ){
     if (buffer)
         free(buffer);
 
-    if (circBuffer)
-        free(circBuffer);
-
-    if (circBufferIndex)
-        free(circBufferIndex);
     // Close the output file
     if (out_fID>=0)
         psf_sndClose(out_fID);
@@ -212,5 +189,5 @@ void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFil
 }
 
 void zero_io_buffer(float *buffer) {
-    memset(buffer,0,N_SAMPLES_IN_BUFFER*sizeof(float));
+    memset(buffer,0,N_FRAMES_IN_BUFFER*sizeof(float));
 }

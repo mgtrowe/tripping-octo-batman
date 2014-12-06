@@ -9,8 +9,12 @@
 #define CW2_BIQUADS_H_
 
 extern double sinc(double x);
-extern void calculateLowpassCoefficients(double *coefficients, long fs, int N, float f);
-extern void biquad(int order, float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, double *coefficients);
+
+extern void deinterlace(float *buffer, float **deinterlacedBuffer, int nFrames, int chans);
+extern void interlace(float **deinterlacedBuffer, float *buffer, int nFrames, int chans);
+
+extern void calculateLowpassCoefficients(double *coefficients, long fs, int N, float f); 
+extern void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long num_frames, int order, double *coefficients);
 
 extern double firFilter(float *circbuffer, int order, int circBufferIndex, double *coefficients);
 

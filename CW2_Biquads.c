@@ -1,6 +1,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "CW2_Biquads.h"
 
 double sinc(double x){
@@ -8,6 +9,22 @@ double sinc(double x){
 		return (sin(M_PI * x)) / (M_PI * x);
 	else
 		return 1;
+}
+void deinterlace(float *buffer, float **deinterlacedBuffer, int nFrames, int chans){
+
+    for (int c = 0; c < chans; c++){
+    	for (int s = 0; s < nFrames; s ++){
+    		deinterlacedBuffer[c][s] = buffer[(s*chans)+c];
+    	}
+    }
+}
+void interlace(float **deinterlacedBuffer, float *buffer, int nFrames, int chans){
+	
+    for (int c = 0; c < chans; c++){
+    	for (int s = 0; s < nFrames; s++){
+    		buffer[c+(chans*s)] = deinterlacedBuffer[c][s];
+    	}
+    }
 }
 
 void calculateLowpassCoefficients(double *coefficients, long fs, int N, float fc){
@@ -17,12 +34,12 @@ void calculateLowpassCoefficients(double *coefficients, long fs, int N, float fc
 	}
 }
 
-void biquad(int order, float *buffer, float *circBuffer, int *circBufferIndex, long num_frames,double *coefficients ) {
+void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long numSamples, int order, double *coefficients) {
 
-	for (int s = 0; s < num_frames; s ++){
-	 	circBuffer[*circBufferIndex] = buffer[s];
-		buffer[s] = firFilter(circBuffer, order, *circBufferIndex, &*coefficients);
-		*circBufferIndex = (*circBufferIndex + 1) % order;  
+	for (int s = 0; s < numSamples; s++){
+		 	circBuffer[*circBufferIndex] = buffer[s];
+			buffer[s] = firFilter(circBuffer, order, *circBufferIndex, coefficients);
+			*circBufferIndex = (*circBufferIndex + 1) % order;  
         }
 }
 
