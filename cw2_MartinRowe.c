@@ -76,12 +76,14 @@ int main( int argc, char *argv[] ){
     if(psf_init()) {
         printf("Unable to start portsf library.\n");
         return_value = EXIT_FAILURE;
+        goto CLEANUP;
     }
 
     // Open the input file
     if ((in_fID = psf_sndOpen(inputFilename, &audio_properties,DO_NOT_AUTO_RESCALE))<0) {
         printf("Unable to open file %s\n",inputFilename);
         return_value = EXIT_FAILURE;
+        goto CLEANUP;
     }
 
     // Open the output file
@@ -89,12 +91,14 @@ int main( int argc, char *argv[] ){
     {   
         printf("Unable to create file %s\n",outputFilename);
         return_value = EXIT_FAILURE;
+        goto CLEANUP;
     }
 
     // Check input file channel count
     if (audio_properties.chans > 1){
-        printf("Number of channels in input file (%i) exceeds 1. Please select a mono input file.\n",audio_properties.chans);
+        printf("Number of channels in input file (%s) exceeds 1. Please select a mono input file.\n",inputFilename);
         return_value = EXIT_FAILURE;
+        goto CLEANUP;
     }
     // Init frame counter (for multichannel if implimented)
     DWORD nFrames = N_FRAMES_IN_BUFFER / audio_properties.chans; 
@@ -103,12 +107,13 @@ int main( int argc, char *argv[] ){
    if ((buffer = malloc(nFrames * audio_properties.chans * sizeof(float)))==NULL) {
         printf("Unable to allocate memory for buffer.\n");
         return_value = EXIT_FAILURE;
+        goto CLEANUP;
     }
     //---------------------------------------------------------------------
     // COEFFICIENT CALCULATION AND AUDIO PROCESSING
 
     // Calculate coefficients after input file sample rate is read
-    calculateLowpassCoefficients(&*coefficients, audio_properties.srate, FIR_FILTER_ORDER, fc);  
+    calculateLowpassCoefficients(coefficients, audio_properties.srate, FIR_FILTER_ORDER, fc);  
 
     // Read frames from input file
     while ((num_frames_read=psf_sndReadFloatFrames(in_fID, buffer, nFrames)) > 0) { 
@@ -123,6 +128,7 @@ int main( int argc, char *argv[] ){
         {
             printf("Unable to write to %s\n",outputFilename);
             return_value = EXIT_FAILURE;
+            goto CLEANUP;
         }
     }
 
@@ -149,12 +155,13 @@ int main( int argc, char *argv[] ){
         if (num_frames_written!=num_frames_to_write) {
             printf("Unable to write to %s\n",outputFilename);
             return_value = EXIT_FAILURE;
+            goto CLEANUP;
         }
     }
 
     //---------------------------------------------------------------------
-    // CLEAN UP
-    
+    CLEANUP:
+
 	// Free the memory for the frame
     if (buffer)
         free(buffer);
