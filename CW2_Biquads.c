@@ -10,16 +10,16 @@ double sinc(double x){
 	else
 		return 1;
 }
+// deinterlace will cycle through samples and place channels in seperate arrays of 2D buffer
 void deinterlace(float *buffer, float **deinterlacedBuffer, int nFrames, int chans){
-
     for (int c = 0; c < chans; c++){
     	for (int s = 0; s < nFrames; s ++){
     		deinterlacedBuffer[c][s] = buffer[(s*chans)+c];
     	}
     }
 }
+// interlace will take arrays from a 2D buffer and interlace samples to a 1D buffer
 void interlace(float **deinterlacedBuffer, float *buffer, int nFrames, int chans){
-	
     for (int c = 0; c < chans; c++){
     	for (int s = 0; s < nFrames; s++){
     		buffer[c+(chans*s)] = deinterlacedBuffer[c][s];
@@ -30,6 +30,8 @@ void interlace(float **deinterlacedBuffer, float *buffer, int nFrames, int chans
 void calculateLowpassCoefficients(double *coefficients, long fs, int N, float fc){
 
 	for (int n = 0; n < N+1; n++){
+		//window = 0.54 - (0.46 * cos((2.0 * M_PI * n) / N))
+		//low-pass = ((2.0 * fc) / fs) * sinc(((2.0 * n - N) * fc) / fs)
 		coefficients[n] = (0.54 - (0.46 * cos((2.0 * M_PI * n) / N))) * (((2.0 * fc) / fs) * sinc(((2.0 * n - N) * fc) / fs));
 	}
 }

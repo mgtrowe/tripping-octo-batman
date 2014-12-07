@@ -8,7 +8,7 @@
 #ifndef CW2_BIQUADS_H_
 #define CW2_BIQUADS_H_
 
-extern double sinc(double x);
+double sinc(double x);
 
 extern void deinterlace(float *buffer, float **deinterlacedBuffer, int nFrames, int chans);
 extern void interlace(float **deinterlacedBuffer, float *buffer, int nFrames, int chans);

@@ -34,7 +34,6 @@ enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE };
 
 //declare functions
 void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc);
-void zero_io_buffer(float *buffer);
 
 //---------------------------------------------------------------------------
 
@@ -101,23 +100,24 @@ int main( int argc, char *argv[] ){
         return_value = EXIT_FAILURE;
         goto CLEANUP;
     }
-    // Init frame counter (for multichannel if implimented)
+    // Init frame counter
     DWORD nFrames = N_SAMPLES_IN_BUFFER / audio_properties.chans; 
     bufferLength = N_SAMPLES_IN_BUFFER;
 
     // Allocate memory for buffer
-    if ((buffer = malloc(bufferLength))==NULL) {
+    if ((buffer = malloc(bufferLength * sizeof(float)))==NULL) {
         printf("Unable to allocate memory for buffer.\n");
         return_value = EXIT_FAILURE;
         goto CLEANUP;
     }
 
-    // Allocate memory for deinterlacedBuffer audio buffer
+    // Allocate memory for deinterlacedBuffer 2D audio buffer
    if ((deinterlacedBuffer = malloc(audio_properties.chans))==NULL) {
         printf("Unable to allocate memory for deinterlacedBuffer channels.\n");
         return_value = EXIT_FAILURE;
         goto CLEANUP;
     }
+    // The total buffer size is split between audio channels
    for (int i = 0; i < audio_properties.chans; i++){
        if ((deinterlacedBuffer[i] = malloc(nFrames * sizeof(float)))==NULL) {
             printf("Unable to allocate memory for deinterlacedBuffer buffer channel %i samples.\n",i);
@@ -126,7 +126,7 @@ int main( int argc, char *argv[] ){
         }
     }
 
-    //allocate memory for circular buffer per channel
+    //allocate memory for circular buffer per audio channel
    if ((circBuffer = malloc(audio_properties.chans))==NULL) {
         printf("Unable to allocate memory for circularBuffer channels.\n");
         return_value = EXIT_FAILURE;
@@ -155,13 +155,13 @@ int main( int argc, char *argv[] ){
     // Read frames from input file into buffer
     while ((num_frames_read=psf_sndReadFloatFrames(in_fID, buffer, nFrames)) > 0) { 
 
-        // Deinterlace buffer
+        // Deinterlace buffer for easy per-channel processing
         deinterlace(buffer, deinterlacedBuffer, num_frames_read, audio_properties.chans);
 
         // Cycle through each channel for processing
         for (int chan = 0; chan < audio_properties.chans; chan++){
             // Filter signal for each deinterlaced channel
-         //   biquad(deinterlacedBuffer[chan],circBuffer[chan],&circBufferIndex[chan],num_frames_read,FIR_FILTER_ORDER,coefficients);
+            biquad(deinterlacedBuffer[chan],circBuffer[chan],&circBufferIndex[chan],num_frames_read,FIR_FILTER_ORDER,coefficients);
         }
         // Interlace samples buffer
         interlace(deinterlacedBuffer, buffer, num_frames_read, audio_properties.chans);
@@ -209,8 +209,4 @@ void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFil
     strcpy(inputFilename, argv[1]);
     strcpy(outputFilename, argv[2]);
     *fc = atol(argv[3]);
-}
-
-void zero_io_buffer(float *buffer) {
-    memset(buffer,0,N_SAMPLES_IN_BUFFER*sizeof(float));
 }
