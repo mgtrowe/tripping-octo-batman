@@ -32,8 +32,11 @@ enum float_clipping { DO_NOT_CLIP_FLOATS, CLIP_FLOATS };
 enum minheader { DO_NOT_MINIMISE_HDR, MINIMISE_HDR };
 enum auto_rescale { DO_NOT_AUTO_RESCALE, AUTO_RESCALE }; 
 
+// Default mono operation setting
+enum { MONO, MULTICHANNEL } op_mode = MONO;  
+
 //declare functions
-void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc);
+int parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc);
 
 //---------------------------------------------------------------------------
 
@@ -67,7 +70,7 @@ int main( int argc, char *argv[] ){
     // INTERFACE
 
     // Function to recieve and error-check user input
-    parseUserInput(argc, argv, inputFilename, outputFilename, &fc); 
+    parseUserInput(argc, argv, inputFilename, outputFilename, &fc);
 
     //---------------------------------------------------------------------
 	// PORTSF I/O AND MEMORY ALLOCATION
@@ -95,8 +98,8 @@ int main( int argc, char *argv[] ){
     }
 
     // Check input file channel count
-    if (audio_properties.chans > 2){
-        printf("Number of channels in input file (%s) exceeds 1. Please select a mono input file.\n",inputFilename);
+    if (audio_properties.chans > 1 && op_mode == 0){
+        printf("Number of channels in input file (%s) exceeds 1. For multichannel processing use flag -m\n",inputFilename);
         return_value = EXIT_FAILURE;
         goto CLEANUP;
     }
@@ -184,8 +187,19 @@ int main( int argc, char *argv[] ){
     if (buffer)
         free(buffer);
 
+    if (deinterlacedBuffer)
+    {
+        for (int i = 0; i < audio_properties.chans; i++)
+            free(deinterlacedBuffer[i]);
+        free(deinterlacedBuffer);
+    }
+
     if (circBuffer)
+    {
+        for (int i = 0; i < audio_properties.chans; i++)
+            free(circBuffer[i]);
         free(circBuffer);
+    }
 
     if (circBufferIndex)
         free(circBufferIndex);
@@ -205,8 +219,26 @@ int main( int argc, char *argv[] ){
 
 //---------------------------------------------------------------------------
 
-void parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc){
-    strcpy(inputFilename, argv[1]);
-    strcpy(outputFilename, argv[2]);
-    *fc = atol(argv[3]);
+int parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc){
+    // obligitory parameters
+    if (argv[1] == NULL || argv[2] == NULL || argv[3] == NULL ){
+        printf("USAGE: %s\n",USAGE);
+        exit(0);
+    } else {   
+        strcpy(inputFilename, argv[1]);
+        strcpy(outputFilename, argv[2]);
+    }
+    if  (atol(argv[3]) < 20 || atol(argv[3]) > 20000){
+        printf("Cutoff frequency %s is not within the expected range 20Hz - 20000Hz\n",argv[3]);
+        exit(0);
+    }
+    else {  
+        *fc = atol(argv[3]);        
+    }
+    if (argc == 5){
+        if (strcmp(argv[4],"-m") == 0){
+            op_mode = MULTICHANNEL; 
+        }
+    }
+    return 0;
 }

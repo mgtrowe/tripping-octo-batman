@@ -28,11 +28,12 @@ void interlace(float **deinterlacedBuffer, float *buffer, int nFrames, int chans
 }
 
 void calculateLowpassCoefficients(double *coefficients, long fs, int N, float fc){
-
+	double hammingWindow;
+	double fourierLP;
 	for (int n = 0; n < N+1; n++){
-		//window = 0.54 - (0.46 * cos((2.0 * M_PI * n) / N))
-		//low-pass = ((2.0 * fc) / fs) * sinc(((2.0 * n - N) * fc) / fs)
-		coefficients[n] = (0.54 - (0.46 * cos((2.0 * M_PI * n) / N))) * (((2.0 * fc) / fs) * sinc(((2.0 * n - N) * fc) / fs));
+		hammingWindow = 0.54 - (0.46 * cos((2.0 * M_PI * n) / N));
+		fourierLP = ((2.0 * fc) / fs) * sinc(((2.0 * n - N) * fc) / fs);
+		coefficients[n] = hammingWindow * fourierLP;
 	}
 }
 
