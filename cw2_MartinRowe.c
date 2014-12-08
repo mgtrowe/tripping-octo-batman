@@ -1,25 +1,29 @@
 /*
- * CW2.c
+ * cw2_MartinRowe.c
  *
  *  Created on: 30 Nov 2014
  *      Author: mr00132
  */
 
 /*
-Program implimenting a FIR low-pass filter 
-algorithm and executing the algorithm on a
-.wav file using the PortSF library.
+* This program processes a mono .wav file with a 126-order FIR low-pass filter
+* algorithm using the PortSF library.
+* 
+* USAGE: cw2_MartinRowe <input wav> <output wav> <cutoff frequency in Hz> <FLAGS>
+* 
+* To use this program in multichannel mode, use the --m flag.
 */
+
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include "portsf.h"
-#include "CW2_Biquads.h"
+#include "cw2_MartinRowe_Biquads.h"
 
 #define N_SAMPLES_IN_BUFFER 1024
-#define USAGE "cw2_MartinRowe <input wav> <output wav> <cutoff frequency in Hz>"
+#define USAGE "cw2_MartinRowe <input wav> <output wav> <cutoff frequency in Hz> <FLAGS>"
 
 // To ensure that portsf does not close a file that was never opened.
 #define INVALID_PORTSF_FID -1
@@ -89,6 +93,13 @@ int main( int argc, char *argv[] ){
         goto CLEANUP;
     }
 
+        // Check input file channel count
+    if (audio_properties.chans > 1 && op_mode == 0){
+        printf("Number of channels in input file (%s) exceeds 1. For multichannel processing use flag --m\n",inputFilename);
+        return_value = EXIT_FAILURE;
+        goto CLEANUP;
+    }
+
     // Open the output file
     if ((out_fID = psf_sndCreate(outputFilename, &audio_properties, CLIP_FLOATS, DO_NOT_MINIMISE_HDR, PSF_CREATE_RDWR))<0) 
     {   
@@ -97,12 +108,6 @@ int main( int argc, char *argv[] ){
         goto CLEANUP;
     }
 
-    // Check input file channel count
-    if (audio_properties.chans > 1 && op_mode == 0){
-        printf("Number of channels in input file (%s) exceeds 1. For multichannel processing use flag -m\n",inputFilename);
-        return_value = EXIT_FAILURE;
-        goto CLEANUP;
-    }
     // Init frame counter
     DWORD nFrames = N_SAMPLES_IN_BUFFER / audio_properties.chans; 
     bufferLength = N_SAMPLES_IN_BUFFER;
@@ -129,7 +134,7 @@ int main( int argc, char *argv[] ){
         }
     }
 
-    //allocate memory for circular buffer per audio channel
+    // Allocate memory for circular buffer per audio channel
    if ((circBuffer = malloc(audio_properties.chans))==NULL) {
         printf("Unable to allocate memory for circularBuffer channels.\n");
         return_value = EXIT_FAILURE;
@@ -142,7 +147,7 @@ int main( int argc, char *argv[] ){
             goto CLEANUP;
         }
     }
-
+    // Allocate the number of counters for CircBufferIndex depending on chan count
     if ((circBufferIndex = malloc(audio_properties.chans * sizeof(int)))==NULL) {
         printf("Unable to allocate memory for circular buffer index.\n");
         return_value = EXIT_FAILURE;
@@ -183,7 +188,7 @@ int main( int argc, char *argv[] ){
     //---------------------------------------------------------------------
     CLEANUP:
 
-	// Free the memory for the frame
+	// Free the memory used in the program
     if (buffer)
         free(buffer);
 
@@ -203,6 +208,7 @@ int main( int argc, char *argv[] ){
 
     if (circBufferIndex)
         free(circBufferIndex);
+
     // Close the output file
     if (out_fID>=0)
         psf_sndClose(out_fID);
@@ -220,14 +226,24 @@ int main( int argc, char *argv[] ){
 //---------------------------------------------------------------------------
 
 int parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFilename, long *fc){
-    // obligitory parameters
+    // Obligitory parameters
     if (argv[1] == NULL || argv[2] == NULL || argv[3] == NULL ){
-        printf("USAGE: %s\n",USAGE);
+        // Print introduction and usage instructions
+        printf( 
+            "--------------------- cw2_MartinRowe --------------------- \n"
+            "This program processes a mono .wav file with a 126-order FIR low-pass filter\n"
+            "algorithm using the PortSF library.\n"
+            "\n"
+            "USAGE: cw2_MartinRowe <input wav> <output wav> <cutoff frequency in Hz> <FLAGS>\n"
+            "\n"
+            "To use this program in multichannel mode, use the --m flag.\n"
+            );
         exit(0);
     } else {   
         strcpy(inputFilename, argv[1]);
         strcpy(outputFilename, argv[2]);
     }
+    // Range check frequency
     if  (atol(argv[3]) < 20 || atol(argv[3]) > 20000){
         printf("Cutoff frequency %s is not within the expected range 20Hz - 20000Hz\n",argv[3]);
         exit(0);
@@ -235,10 +251,21 @@ int parseUserInput(int argc, char *argv[], char *inputFilename, char *outputFile
     else {  
         *fc = atol(argv[3]);        
     }
+    // Deal with optional argument and suggest correction for misuse of '--m'
     if (argc == 5){
-        if (strcmp(argv[4],"-m") == 0){
+        if (strcmp(argv[4],"--m") == 0){
             op_mode = MULTICHANNEL; 
         }
+        else if (strcmp(argv[4],"-m") == 0){
+             printf("Unrecognised argument '-m' did you mean '--m'?\n"); 
+             exit(0);
+         }
+        else {
+            printf("Optional argument '%s' not recognised\n", argv[5]);
+            exit(0);
+        }
+        
     }
+
     return 0;
 }

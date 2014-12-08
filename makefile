@@ -1,8 +1,8 @@
-TARGET = cw2_MartingtRowe
+TARGET = cw2_MartinRowe
 
 SOURCES = \
 	cw2_MartinRowe.c \
-    CW2_Biquads.c 
+    cw2_MartinRowe_Biquads.c 
 
 INCFOLDERS = \
     -I./include

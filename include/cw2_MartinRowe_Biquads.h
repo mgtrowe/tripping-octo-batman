@@ -1,12 +1,12 @@
 /*
- * biquads.h
+ * cw2_MartinRowe_Biquads.h
  *
  *  Created on: 18 Nov 2014
  *      Author: mr00132
  */
 
-#ifndef CW2_BIQUADS_H_
-#define CW2_BIQUADS_H_
+#ifndef CW2_MARTINROWE_BIQUADS_H_
+#define CW2_MARTINROWE_BIQUADS_H_
 
 double sinc(double x);
 
@@ -18,4 +18,4 @@ extern void biquad(float *buffer, float *circBuffer, int *circBufferIndex, long 
 
 extern double firFilter(float *circbuffer, int order, int circBufferIndex, double *coefficients);
 
-#endif /* CW2_BIQUADS_H_ */
+#endif /* CW2_MARTINROWE_BIQUADS_H_ */
